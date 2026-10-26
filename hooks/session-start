@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# SessionStart hook for ultrapowers plugin
+
+set -euo pipefail
+
+# Determine plugin root directory
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Check if legacy skills directory exists and build warning
+warning_message=""
+legacy_skills_dir="${HOME}/.config/ultrapowers/skills"
+if [ -d "$legacy_skills_dir" ]; then
+    warning_message="\n\n<important-reminder>IN YOUR FIRST REPLY AFTER SEEING THIS MESSAGE YOU MUST TELL THE USER:⚠️ **WARNING:** Ultrapowers now uses Claude Code's skills system. Custom skills in ~/.config/ultrapowers/skills will not be read. Move custom skills to ~/.claude/skills instead. To make this message go away, remove ~/.config/ultrapowers/skills</important-reminder>"
+fi
+
+# Update check: compare installed version to marketplace main, cached 24h.
+# Opt out with ULTRAPOWERS_UPDATE_CHECK=0. Silent on network failure.
+check_for_update() {
+    [ "${ULTRAPOWERS_UPDATE_CHECK:-1}" = "0" ] && return 0
+
+    local installed
+    installed=$(grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' "${PLUGIN_ROOT}/.claude-plugin/plugin.json" 2>/dev/null | head -1 | sed -E 's/.*"([^"]+)"$/\1/') || true
+    [ -z "${installed:-}" ] && return 0
+
+    local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/ultrapowers"
+    local cache_file="$cache_dir/update-check.json"
+    local now latest checked_at
+    now=$(date +%s)
+    local ttl=86400
+    latest=""
+
+    if [ -f "$cache_file" ]; then
+        checked_at=$(grep -oE '"checked_at"[[:space:]]*:[[:space:]]*[0-9]+' "$cache_file" 2>/dev/null | grep -oE '[0-9]+' | head -1) || true
+        if [ -n "${checked_at:-}" ] && [ "$((now - checked_at))" -lt "$ttl" ]; then
+            latest=$(grep -oE '"latest_version"[[:space:]]*:[[:space:]]*"[^"]+"' "$cache_file" 2>/dev/null | sed -E 's/.*"([^"]+)"$/\1/') || true
+        fi
+    fi
+
+    if [ -z "${latest:-}" ]; then
+        local remote
+        remote=$(curl --max-time 5 --silent --fail \
+            "https://raw.githubusercontent.com/ennio-datatide/ultrapowers/main/.claude-plugin/plugin.json" 2>/dev/null) || return 0
+        latest=$(printf '%s' "$remote" | grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed -E 's/.*"([^"]+)"$/\1/') || true
+        [ -z "${latest:-}" ] && return 0
+
+        mkdir -p "$cache_dir" 2>/dev/null || true
+        printf '{"checked_at":%s,"latest_version":"%s"}\n' "$now" "$latest" > "$cache_file" 2>/dev/null || true
+    fi
+
+    if [ "$latest" != "$installed" ]; then
+        local newer
+        newer=$(printf '%s\n%s\n' "$installed" "$latest" | sort -V | tail -1)
+        if [ "$newer" = "$latest" ]; then
+            printf '\n\n<ultrapowers-update-available>\nUltrapowers %s is available (installed: %s). Tell the user once, then suggest they run `/plugin update ultrapowers` when ready. Do not run it yourself.\n</ultrapowers-update-available>' \
+                "$latest" "$installed"
+        fi
+    fi
+}
+
+update_notice=$(check_for_update || true)
+
+# Read using-ultrapowers content
+using_ultrapowers_content=$(cat "${PLUGIN_ROOT}/skills/core/using-ultrapowers/SKILL.md" 2>&1 || echo "Error reading using-ultrapowers skill")
+
+# Append no-permission-asks + autonomous-decision directives (always-on rules)
+directives_file="${PLUGIN_ROOT}/hooks/lib/no-permission-asks-directive.txt"
+if [ -f "$directives_file" ]; then
+    using_ultrapowers_content+=$'\n\n'"$(cat "$directives_file")"
+fi
+
+# Conditionally append advisor-timing directive for sonnet/haiku sessions.
+# Read session.model from the SessionStart payload via stdin. Substring match
+# against alias forms handles dated IDs (claude-sonnet-4-6) AND plain aliases.
+# Conservative default: missing/empty model = no injection (treat as opus-tier).
+session_payload=$(cat 2>/dev/null || echo "{}")
+session_model=$(echo "$session_payload" | jq -r '.model // ""' 2>/dev/null || echo "")
+case "$session_model" in
+    *sonnet*|*haiku*)
+        advisor_directive_file="${PLUGIN_ROOT}/hooks/lib/advisor-timing-directive.txt"
+        if [ -f "$advisor_directive_file" ]; then
+            using_ultrapowers_content+=$'\n\n'"$(cat "$advisor_directive_file")"
+        fi
+        ;;
+esac
+
+# Escape string for JSON embedding using bash parameter substitution.
+# Each ${s//old/new} is a single C-level pass - orders of magnitude
+# faster than the character-by-character loop this replaces.
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+using_ultrapowers_escaped=$(escape_for_json "$using_ultrapowers_content")
+warning_escaped=$(escape_for_json "$warning_message")
+update_notice_escaped=$(escape_for_json "$update_notice")
+session_context="<ultrapowers>\nYou have ultrapowers.\n\n**Below is the full content of your 'ultrapowers:using-ultrapowers' skill - your introduction to using skills. For all other skills, use the 'Skill' tool:**\n\n${using_ultrapowers_escaped}\n\n${warning_escaped}\n</ultrapowers>${update_notice_escaped}"
+
+# Output context injection as JSON.
+# Cursor hooks expect additional_context (snake_case).
+# Claude Code hooks expect hookSpecificOutput.additionalContext (nested).
+# Copilot CLI (v1.0.11+) and others expect additionalContext (top-level, SDK standard).
+# Claude Code reads BOTH additional_context and hookSpecificOutput without
+# deduplication, so we must emit only the field the current platform consumes.
+#
+# Uses printf instead of heredoc to work around bash 5.3+ heredoc hang.
+# See: https://github.com/obra/ultrapowers/issues/571
+if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
+  # Cursor sets CURSOR_PLUGIN_ROOT (may also set CLAUDE_PLUGIN_ROOT)
+  printf '{\n  "additional_context": "%s"\n}\n' "$session_context"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ]; then
+  # Claude Code sets CLAUDE_PLUGIN_ROOT without COPILOT_CLI
+  printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$session_context"
+else
+  # Copilot CLI (sets COPILOT_CLI=1) or unknown platform — SDK standard format
+  printf '{\n  "additionalContext": "%s"\n}\n' "$session_context"
+fi
+
+exit 0

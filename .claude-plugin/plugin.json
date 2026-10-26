@@ -1,0 +1,51 @@
+{
+  "name": "ultrapowers",
+  "description": "Matt Pocock's engineering method on rails: grill an idea, spec it, slice it, build it test-first, review it — driven for people who build software without being engineers.",
+  "version": "2.2.2",
+  "author": {
+    "name": "Ennio Maldonado",
+    "url": "https://www.enniomaldonado.com"
+  },
+  "homepage": "https://datatide.io/ultrapowers",
+  "repository": "https://github.com/ennio-datatide/ultrapowers",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "grilling",
+    "spec-driven",
+    "tdd",
+    "code-review",
+    "domain-modeling",
+    "visual-design",
+    "workflows"
+  ],
+  "skills": [
+    "./skills/flow/grill",
+    "./skills/flow/spec",
+    "./skills/flow/tickets",
+    "./skills/flow/implement",
+    "./skills/flow/review",
+    "./skills/core/autonomous-decision",
+    "./skills/core/consulting-the-advisor",
+    "./skills/core/no-permission-asks",
+    "./skills/core/using-ultrapowers",
+    "./skills/engineering/codebase-design",
+    "./skills/engineering/deep-research",
+    "./skills/engineering/domain-modeling",
+    "./skills/engineering/grilling",
+    "./skills/engineering/improve-codebase-architecture",
+    "./skills/engineering/project-setup",
+    "./skills/engineering/prototype",
+    "./skills/engineering/resolving-merge-conflicts",
+    "./skills/engineering/systematic-debugging",
+    "./skills/engineering/test-driven-development",
+    "./skills/engineering/visual-design",
+    "./skills/engineering/design-review",
+    "./skills/engineering/wizard",
+    "./skills/engineering/workspace-search",
+    "./skills/meta/writing-skills",
+    "./skills/productivity/handoff",
+    "./skills/productivity/claude-code-setup",
+    "./skills/productivity/wait-what"
+  ]
+}

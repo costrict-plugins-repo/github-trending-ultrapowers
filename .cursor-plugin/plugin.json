@@ -1,0 +1,17 @@
+{
+  "name": "ultrapowers",
+  "displayName": "Ultrapowers",
+  "description": "Core skills library: TDD, debugging, collaboration patterns, and proven techniques",
+  "version": "2.1.1",
+  "author": {
+    "name": "Ennio Maldonado",
+    "url": "https://www.enniomaldonado.com"
+  },
+  "homepage": "https://www.datatide.com",
+  "repository": "https://github.com/ennio-datatide/ultrapowers",
+  "license": "MIT",
+  "keywords": ["skills", "tdd", "debugging", "collaboration", "best-practices", "workflows"],
+  "skills": "./skills/",
+  "agents": "./agents/",
+  "hooks": "./hooks/hooks-cursor.json"
+}
