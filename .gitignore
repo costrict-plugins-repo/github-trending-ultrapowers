@@ -1,0 +1,15 @@
+.worktrees/
+.private-journal/
+.claude/
+.DS_Store
+node_modules/
+inspo
+triage/
+.claude/ultrapowers-preferences.json
+
+# Audit working scratchpad
+.cache/
+
+
+# zvec-grep local index (machine-specific, never committed)
+.zvec-grep/
